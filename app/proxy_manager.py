@@ -337,7 +337,15 @@ class AppState:
                 logger.warning("没有可用的代理进行测试")
                 return []
 
-            selected = random.sample(candidates, min(count, len(candidates)))
+            candidates.sort(
+                key=lambda proxy: (
+                    0 if not proxy.last_tested else 1,
+                    0 if not proxy.is_working else 1,
+                    proxy.speed_ms if proxy.speed_ms is not None else float("inf"),
+                    proxy.address,
+                )
+            )
+            selected = candidates[: min(count, len(candidates))]
             logger.info("开始测试 %s 个代理...", len(selected))
 
             async with aiohttp.ClientSession() as session:
@@ -347,7 +355,9 @@ class AppState:
 
             working = [proxy for proxy in selected if proxy.is_working]
             with self.lock:
-                self.working = {proxy.address: proxy for proxy in working}
+                self.working = {
+                    proxy.address: proxy for proxy in self.proxies if proxy.is_working
+                }
                 self.last_test = datetime.now()
                 self.stats["total_tested"] += len(selected)
                 self.stats["working_count"] = len(working)
@@ -420,6 +430,70 @@ def compute_average_latency(proxies: List[Proxy]) -> float:
     if not latencies:
         return 0
     return sum(latencies) / len(latencies)
+
+
+def geo_cache_path() -> Path:
+    return DATA_DIR / "geo_cache.json"
+
+
+def load_geo_cache() -> Dict[str, str]:
+    path = geo_cache_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def save_geo_cache(cache: Dict[str, str]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    geo_cache_path().write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def resolve_country_code(value: str, cache: Optional[Dict[str, str]] = None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    cache = cache if cache is not None else load_geo_cache()
+    if raw in cache:
+        return cache[raw]
+    target = raw
+    try:
+        ip = socket.gethostbyname(raw)
+        target = ip
+        if ip in cache:
+            cache[raw] = cache[ip]
+            return cache[ip]
+    except Exception:
+        target = raw
+    try:
+        response = requests.get(f"https://ipapi.co/{target}/country/", timeout=5)
+        if response.ok:
+            code = response.text.strip().upper()
+            if len(code) == 2 and code.isalpha():
+                cache[raw] = code
+                cache[target] = code
+                return code
+    except Exception:
+        pass
+    return ""
+
+
+def enrich_proxy_countries(items: List[Proxy]) -> None:
+    cache = load_geo_cache()
+    changed = False
+    for proxy in items:
+        if proxy.country:
+            continue
+        code = resolve_country_code(proxy.ip, cache)
+        if code:
+            proxy.country = code
+            changed = True
+    if changed:
+        save_geo_cache(cache)
 
 
 def config_path() -> Path:
@@ -664,12 +738,15 @@ def build_proxy_from_payload(
 ) -> Optional[Proxy]:
     if isinstance(payload, dict):
         country = payload.get("country") or payload.get("Country") or country_hint
+        protocol = str(
+            payload.get("protocol") or payload.get("Protocol") or default_protocol
+        ).lower()
+        if protocol not in SUPPORTED_PROTOCOLS:
+            return None
         return Proxy(
             ip=str(payload.get("ip") or payload.get("Ip") or ""),
             port=str(payload.get("port") or payload.get("Port") or ""),
-            protocol=str(
-                payload.get("protocol") or payload.get("Protocol") or default_protocol
-            ),
+            protocol=protocol,
             country=str(country or "").upper(),
             anonymity=str(payload.get("anonymity") or payload.get("Anonymity") or ""),
             source=str(payload.get("source") or payload.get("Source") or ""),
@@ -678,10 +755,13 @@ def build_proxy_from_payload(
     parts = str(payload).split(":")
     if len(parts) < 2:
         return None
+    protocol = str(default_protocol).lower()
+    if protocol not in SUPPORTED_PROTOCOLS:
+        return None
     return Proxy(
         ip=parts[0],
         port=parts[1],
-        protocol=default_protocol,
+        protocol=protocol,
         country=country_hint.upper() if country_hint else "",
         source="",
     )
@@ -713,75 +793,17 @@ def is_base64_text(value: str) -> bool:
     return all(ch in allowed for ch in text)
 
 
-def parse_vmess_link(link: str) -> Optional[Proxy]:
-    raw = link.split("vmess://", 1)[1].strip()
-    decoded = decode_base64_text(raw)
-    if not decoded:
-        return None
-    try:
-        data = json.loads(decoded)
-    except Exception:
-        return None
-    server = str(data.get("add") or data.get("server") or "").strip()
-    port = str(data.get("port") or "").strip()
-    if not server or not port:
-        return None
-    return Proxy(
-        ip=server,
-        port=port,
-        protocol="vmess",
-        country="",
-        anonymity=str(data.get("type") or data.get("net") or ""),
-    )
-
-
-def parse_ss_link(link: str) -> Optional[Proxy]:
-    body = link.split("ss://", 1)[1].strip()
-    fragment = ""
-    if "#" in body:
-        body, fragment = body.split("#", 1)
-    body = body.split("?", 1)[0]
-
-    decoded = body
-    if "@" not in body:
-        decoded = decode_base64_text(body)
-    if not decoded:
-        return None
-
-    if "@" in decoded:
-        left, right = decoded.rsplit("@", 1)
-    else:
-        return None
-    if ":" not in right:
-        return None
-    host, port = right.rsplit(":", 1)
-    return Proxy(
-        ip=host.strip(),
-        port=port.strip(),
-        protocol="ss",
-        country="",
-        anonymity=fragment or left.split(":", 1)[0] if ":" in left else "",
-    )
-
-
 def parse_uri_proxy(line: str) -> Optional[Proxy]:
-    if line.startswith("vmess://"):
-        return parse_vmess_link(line)
-    if line.startswith("vless://"):
-        return parse_vless_link(line)
-    if line.startswith("trojan://"):
-        return parse_trojan_link(line)
-    if line.startswith("hysteria2://") or line.startswith("hy2://"):
-        return parse_hysteria2_link(line)
-    if line.startswith("ss://"):
-        return parse_ss_link(line)
-    if line.startswith("socks5://") or line.startswith("socks4://") or line.startswith("http://") or line.startswith("https://"):
+    if line.startswith(("socks5://", "socks4://", "http://", "https://")):
         parsed = urlsplit(line)
         host = parsed.hostname or ""
         port = parsed.port or 0
         if not host or not port:
             return None
-        return Proxy(ip=host, port=str(port), protocol=parsed.scheme.lower(), country="", source="")
+        protocol = parsed.scheme.lower()
+        if protocol not in SUPPORTED_PROTOCOLS:
+            return None
+        return Proxy(ip=host, port=str(port), protocol=protocol, country="", source="")
     return None
 
 
@@ -797,7 +819,7 @@ def parse_clash_style_proxies(text: str) -> List[Proxy]:
         server = str(current.get("server", "")).strip()
         port = str(current.get("port", "")).strip()
         protocol = str(current.get("type", "")).strip().lower()
-        if server and port and protocol:
+        if server and port and protocol in SUPPORTED_PROTOCOLS:
             proxies.append(Proxy(ip=server, port=port, protocol=protocol, country=""))
         current = {}
 
@@ -862,8 +884,9 @@ def parse_subscription_text(raw_text: str, default_protocol: str = "all") -> Lis
             address = parts[1]
         proxy = build_proxy_from_payload(address, protocol)
         if proxy and proxy.ip and proxy.port:
-            proxy.protocol = protocol if protocol in {"http", "https", "socks4", "socks5", "vmess", "vless", "trojan", "ss"} else proxy.protocol
-            proxies.append(proxy)
+            proxy.protocol = protocol if protocol in SUPPORTED_PROTOCOLS else proxy.protocol
+            if proxy.protocol in SUPPORTED_PROTOCOLS:
+                proxies.append(proxy)
     return proxies
 
 
@@ -997,6 +1020,7 @@ def refresh_proxy_pool(
         if limit > 0 and len(proxies) > limit:
             proxies = random.sample(proxies, limit)
 
+        enrich_proxy_countries(proxies)
         state.set_proxies(proxies)
         with state.lock:
             state.runtime["last_fetch_error"] = ""
