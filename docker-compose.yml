@@ -1,0 +1,71 @@
+services:
+  proxy-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxy-manager
+    restart: unless-stopped
+    ports:
+      # Web 管理面板
+      - "5000:5000"
+      # SOCKS5 入站代理
+      - "5001:5001"
+      # HTTP/HTTPS 入站代理
+      - "5002:5002"
+    environment:
+      # 测速模式：tcp=本机到代理连接延迟, http=代理出网延迟
+      - TEST_MODE=tcp
+      # 自动拉取与测速
+      - AUTO_FETCH=true
+      - AUTO_TEST=true
+      - AUTO_FETCH_TYPE=all
+      - AUTO_FETCH_COUNTRIES=US,JP,SG
+      - AUTO_FETCH_LIMIT=50
+      - AUTO_TEST_PROTOCOL=
+      - AUTO_TEST_COUNT=50
+      - FETCH_LIMIT_PER_COUNTRY=50
+      # 代理列表更新间隔（秒）
+      - POLL_INTERVAL=300
+      # 自动测速间隔（秒）
+      - TEST_INTERVAL=60
+      # 每次测试的代理数量
+      - TEST_COUNT=50
+      # 测速超时（秒）
+      - TIMEOUT=10
+      - TEST_URL=https://www.google.com
+      # 日志级别
+      - LOG_LEVEL=INFO
+      # 数据目录
+      - DATA_DIR=/app/data
+      # SOCKS5 服务器配置（入站端口 5001）
+      - SOCKS5_ENABLED=true
+      - SOCKS5_HOST=0.0.0.0
+      - SOCKS5_PORT=5001
+      - SOCKS5_AUTH=false
+      - SOCKS5_USER=proxyuser
+      - SOCKS5_PASS=proxypass
+      - SOCKS5_ROTATE=request
+      # HTTP/HTTPS 代理服务器配置（入站端口 5002）
+      - HTTP_PROXY_ENABLED=true
+      - HTTP_PROXY_HOST=0.0.0.0
+      - HTTP_PROXY_PORT=5002
+      - HTTP_PROXY_AUTH=false
+      - HTTP_PROXY_USER=proxyuser
+      - HTTP_PROXY_PASS=proxypass
+    volumes:
+      # 持久化代理数据和配置
+      - ./data:/app/data
+      # 可选：挂载日志
+      - ./logs:/app/logs
+    networks:
+      - proxy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  proxy-network:
+    driver: bridge

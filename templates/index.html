@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>Proxy Manager</h1>
+                <p>自动拉取代理 · 延迟测速 · 统一入站出口</p>
+            </div>
+            <div class="header-status">
+                <span class="status-pill" id="page-status">就绪</span>
+                <span class="header-note">轮询刷新不会再覆盖你正在编辑的配置</span>
+            </div>
+        </header>
+
+        <div class="module-tabs" id="module-tabs">
+            <button class="module-tab is-active" data-tab="overview">总览</button>
+            <button class="module-tab" data-tab="inbound">入站</button>
+            <button class="module-tab" data-tab="pool">代理池</button>
+            <button class="module-tab" data-tab="favorites">收藏</button>
+        </div>
+
+        <section class="module-section is-active" data-section="overview">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value" id="stat-total">0</div><div class="stat-label">总代理数</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-working">0</div><div class="stat-label">可用代理</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-sub-total">0</div><div class="stat-label">订阅节点总数</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-sub-working">0</div><div class="stat-label">可用订阅节点</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-latency">-</div><div class="stat-label">平均延迟 (ms)</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-tested">0</div><div class="stat-label">已测试</div></div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-connection-status">未连接</div>
+                    <div class="stat-label">当前代理</div>
+                    <div class="stat-meta">
+                        <span id="stat-connection-proxy">-</span>
+                        <span id="stat-connection-extra">-</span>
+                        <span id="stat-lock-status">锁定目标：未锁定</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <h2><span>状态消息</span><span class="section-note">操作结果会显示在这里</span></h2>
+                <div id="status-message" class="alert alert-info" style="display:flex;"><span id="status-text">系统就绪</span></div>
+                <div class="meta-row top-gap">
+                    <span>抓取错误：<strong id="stat-fetch-error">无</strong></span>
+                    <span>测速错误：<strong id="stat-test-error">无</strong></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    <span>低延迟快捷代理</span>
+                    <span class="section-note">当前延迟最低的 10 个节点</span>
+                </h2>
+                <div class="table-wrap">
+                    <table class="proxy-table">
+                        <thead>
+                            <tr>
+                                <th>代理地址</th>
+                                <th>地区</th>
+                                <th>延迟 (ms)</th>
+                                <th>来自订阅</th>
+                                <th>类型</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-proxy-tbody">
+                            <tr><td colspan="7" class="empty-state"><p>暂无可用节点</p></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="module-section" data-section="inbound">
+            <div class="card">
+                <h2>
+                    <span>入站代理</span>
+                    <span class="section-note">保存后写入配置文件，当前进程运行状态会继续显示在右侧信息中</span>
+                </h2>
+
+                <div class="panel panel-socks" id="socks5-panel">
+                    <div class="panel-head">
+                        <h3>SOCKS5 入站</h3>
+                        <span class="dirty-hint hidden" id="socks5-dirty-hint">有未保存修改</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>启用 SOCKS5</label>
+                            <select id="socks5-enabled">
+                                <option value="true">启用</option>
+                                <option value="false">禁用</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>端口</label>
+                            <input type="number" id="socks5-port-config" min="1" max="65535">
+                        </div>
+                        <div class="form-group">
+                            <label>启用认证</label>
+                            <select id="socks5-auth-enabled">
+                                <option value="false">禁用</option>
+                                <option value="true">启用</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>当前状态</label>
+                            <input type="text" id="socks5-status" readonly>
+                        </div>
+                    </div>
+                    <div class="form-row" id="socks5-auth-config" style="display:none;">
+                        <div class="form-group">
+                            <label>用户名</label>
+                            <input type="text" id="socks5-user" autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="form-group">
+                            <label>密码</label>
+                            <input type="text" id="socks5-pass" autocomplete="off" spellcheck="false">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-save-socks5" onclick="saveSocks5Config()">保存配置</button>
+                        <button class="btn btn-secondary" onclick="restartSocks5()">重载信息</button>
+                        <button class="btn btn-secondary" onclick="copyText('socks5-connection-info')">复制连接信息</button>
+                        <button class="btn btn-secondary" onclick="showSocks5Help()">使用帮助</button>
+                    </div>
+                    <div class="meta-row">
+                        <span><strong>连接信息：</strong> <code id="socks5-connection-info">socks5://localhost:5001</code></span>
+                        <span>连接数：<strong id="socks5-connections">0</strong></span>
+                    </div>
+                </div>
+
+                <div class="panel panel-http" id="http-panel">
+                    <div class="panel-head">
+                        <h3>HTTP/HTTPS 入站</h3>
+                        <span class="dirty-hint hidden" id="http-dirty-hint">有未保存修改</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>启用 HTTP 代理</label>
+                            <select id="http-enabled">
+                                <option value="true">启用</option>
+                                <option value="false">禁用</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>端口</label>
+                            <input type="number" id="http-port-config" min="1" max="65535">
+                        </div>
+                        <div class="form-group">
+                            <label>启用认证</label>
+                            <select id="http-auth-enabled">
+                                <option value="false">禁用</option>
+                                <option value="true">启用</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>当前状态</label>
+                            <input type="text" id="http-status" readonly>
+                        </div>
+                    </div>
+                    <div class="form-row" id="http-auth-config" style="display:none;">
+                        <div class="form-group">
+                            <label>用户名</label>
+                            <input type="text" id="http-user" autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="form-group">
+                            <label>密码</label>
+                            <input type="text" id="http-pass" autocomplete="off" spellcheck="false">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-save-http" onclick="saveHttpConfig()">保存配置</button>
+                        <button class="btn btn-secondary" onclick="restartHttpProxy()">重载信息</button>
+                        <button class="btn btn-secondary" onclick="copyText('http-connection-info')">复制连接信息</button>
+                        <button class="btn btn-secondary" onclick="showHttpHelp()">使用帮助</button>
+                    </div>
+                    <div class="meta-row">
+                        <span><strong>连接信息：</strong> <code id="http-connection-info">http://localhost:5002</code></span>
+                        <span>请求数：<strong id="http-requests">0</strong></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="module-section" data-section="pool">
+            <div class="card" id="main-config-panel">
+                <h2>
+                    <span>代理与测速</span>
+                    <span class="dirty-hint hidden" id="main-dirty-hint">筛选或配置有未保存修改</span>
+                </h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>代理类型</label>
+                        <select id="proxy-type">
+                            <option value="all">全部类型</option>
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                            <option value="socks4">SOCKS4</option>
+                            <option value="socks5">SOCKS5</option>
+                            <option value="vmess">VMess</option>
+                            <option value="vless">VLESS</option>
+                            <option value="trojan">Trojan</option>
+                            <option value="hysteria2">Hysteria2</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>地区</label>
+                        <select id="country">
+                            <option value="">全部地区</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>来源订阅</label>
+                        <select id="source-filter">
+                            <option value="">全部订阅</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select id="status-filter">
+                            <option value="">全部状态</option>
+                            <option value="working">可用</option>
+                            <option value="failed">失败</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>排序字段</label>
+                        <select id="sort-by">
+                            <option value="speed_ms">延迟</option>
+                            <option value="last_tested">最后测试</option>
+                            <option value="country">国家</option>
+                            <option value="protocol">协议</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>排序方向</label>
+                        <select id="sort-order">
+                            <option value="asc">升序</option>
+                            <option value="desc">降序</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>每页条数</label>
+                        <select id="page-size">
+                            <option value="20">20</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>测试数量</label>
+                        <input type="number" id="test-count" value="50" min="1" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label>获取数量</label>
+                        <input type="number" id="fetch-limit" value="50" min="1" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label>自动测速间隔 (秒)</label>
+                        <input type="number" id="test-interval" min="10" max="3600">
+                    </div>
+                    <div class="form-group">
+                        <label>自动切换间隔 (秒)</label>
+                        <input type="number" id="rotate-interval" min="30" max="7200">
+                    </div>
+                </div>
+                <div class="panel panel-subscription" id="subscription-panel">
+                    <div class="panel-head">
+                        <h3>自定义订阅地址</h3>
+                        <span class="section-note">支持 http/https，支持订阅名称、来源、更新间隔和链接</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>订阅名称</label>
+                            <input type="text" id="subscription-name" placeholder="主订阅">
+                        </div>
+                        <div class="form-group">
+                            <label>订阅来源</label>
+                            <select id="subscription-source">
+                                <option value="remote">远程</option>
+                                <option value="local">本地</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>更新间隔 (秒)</label>
+                            <input type="number" id="subscription-interval" min="10" max="86400" value="60">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label>订阅链接</label>
+                            <input type="text" id="subscription-url-input" placeholder="https://example.com/proxies.txt">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-add-subscription" onclick="addSubscription()">添加订阅</button>
+                        <button class="btn btn-secondary" onclick="loadSubscriptions()">刷新订阅</button>
+                        <button class="btn btn-secondary" onclick="loadSubscriptionStats()">刷新订阅统计</button>
+                    </div>
+                    <div class="subscription-list" id="subscription-list"></div>
+                    <div class="table-wrap top-gap">
+                        <table class="proxy-table">
+                            <thead>
+                                <tr>
+                                    <th>订阅地址</th>
+                                    <th>节点总数</th>
+                                    <th>可用节点</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subscription-stats-tbody">
+                                <tr><td colspan="3" class="empty-state"><p>暂无订阅统计</p></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="btn-connect-main" onclick="connectCurrentProxy()">连接</button>
+                    <button class="btn btn-secondary" id="btn-disconnect-main" onclick="disconnectCurrentProxy()">断开</button>
+                    <button class="btn btn-secondary" id="btn-unlock-proxy" onclick="clearPreferredProxy()">解除锁定</button>
+                    <button class="btn btn-primary" id="btn-fetch" onclick="fetchProxies()">获取代理</button>
+                    <button class="btn btn-primary" id="btn-test" onclick="testProxies()">开始测速</button>
+                    <button class="btn btn-secondary" onclick="loadProxies()">刷新列表</button>
+                    <button class="btn btn-secondary" id="btn-save-main" onclick="saveConfig()">保存筛选配置</button>
+                </div>
+                <div class="meta-row top-gap">
+                    <span>默认获取数量已调整为 <strong>50</strong></span>
+                    <span>连接和锁定已分离：连接是当前动作，锁定是默认目标</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2><span>代理列表</span><span class="section-note"><span id="proxy-count">0</span> 个代理 | 最后更新：<span id="last-update">-</span></span></h2>
+                <div class="table-wrap">
+                    <table class="proxy-table">
+                        <thead>
+                            <tr>
+                                <th>代理地址</th>
+                                <th>类型</th>
+                                <th>国家</th>
+                                <th>匿名度</th>
+                                <th>延迟 (ms)</th>
+                                <th>状态</th>
+                                <th>最后测试</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="proxy-tbody">
+                            <tr><td colspan="8" class="empty-state"><div class="empty-state-icon">[]</div><p>暂无代理数据</p><p class="small" style="margin-top:10px;">点击“获取代理”开始</p></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="meta-row top-gap">
+                    <span>当前页：<strong id="proxy-page-current">1</strong> / <strong id="proxy-page-total">1</strong></span>
+                    <span>筛选结果：<strong id="proxy-filtered-count">0</strong></span>
+                    <span>来源数：<strong id="proxy-source-count">0</strong></span>
+                </div>
+                <div class="btn-group top-gap">
+                    <button class="btn btn-secondary" id="btn-page-prev" onclick="changeProxyPage(-1)">上一页</button>
+                    <button class="btn btn-secondary" id="btn-page-next" onclick="changeProxyPage(1)">下一页</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="module-section" data-section="favorites">
+            <div class="card">
+                <h2><span>收藏代理</span><span class="section-note"><span id="favorite-count">0</span> 个</span></h2>
+                <div class="table-wrap">
+                    <table class="proxy-table">
+                        <thead>
+                            <tr>
+                                <th>代理地址</th>
+                                <th>类型</th>
+                                <th>国家</th>
+                                <th>延迟 (ms)</th>
+                                <th>最后测试</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="favorite-tbody">
+                            <tr><td colspan="6" class="empty-state"><div class="empty-state-icon">*</div><p>暂无收藏</p><p class="small" style="margin-top:10px;">在代理列表中点击收藏</p></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
