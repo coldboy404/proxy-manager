@@ -919,10 +919,11 @@ def fetch_custom_subscription(url: str, default_protocol: str = "all") -> List[P
 
     try:
         payload = response.json()
-        raw_rows = payload.get("proxies", payload) if isinstance(payload, dict) else payload
-        if isinstance(raw_rows, list):
-            for row in raw_rows:
-                proxy = build_proxy_from_payload(row, default_protocol)
+        json_rows = _extract_proxy_rows(payload)
+        if json_rows:
+            for row in json_rows:
+                row_country = _proxy_country(row)
+                proxy = build_proxy_from_payload(row, default_protocol, row_country)
                 if proxy and proxy.ip and proxy.port:
                     rows.append(proxy)
             return rows
@@ -935,6 +936,27 @@ def fetch_custom_subscription(url: str, default_protocol: str = "all") -> List[P
     return parse_subscription_text(text, default_protocol=default_protocol)
 
 
+def _extract_proxy_rows(payload) -> List[Dict]:
+    """从 proxifly / 通用订阅 JSON 中提取代理对象列表"""
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if isinstance(payload, dict):
+        raw = payload.get("proxies", payload)
+        if isinstance(raw, list):
+            return [row for row in raw if isinstance(row, dict)]
+        return []
+    return []
+
+
+def _proxy_country(row: Dict, fallback: str = "") -> str:
+    geo = row.get("geolocation") or {}
+    if isinstance(geo, dict):
+        code = str(geo.get("country", "")).strip().upper()
+        if code and code != "ZZ":
+            return code
+    return str(row.get("country") or fallback or "").upper()
+
+
 def fetch_proxy_feed(proxy_type: str = "all", country: str = "") -> List[Proxy]:
     if country and country.upper() != "ALL":
         url = f"https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/countries/{country.upper()}/data.json"
@@ -945,10 +967,11 @@ def fetch_proxy_feed(proxy_type: str = "all", country: str = "") -> List[Proxy]:
     response = requests.get(url, timeout=30)
     response.raise_for_status()
     payload = response.json()
-    rows = payload.get("proxies", payload) if isinstance(payload, dict) else payload
+    rows = _extract_proxy_rows(payload)
     proxies: List[Proxy] = []
     for row in rows:
-        proxy = build_proxy_from_payload(row, proxy_type, country)
+        row_country = _proxy_country(row, country)
+        proxy = build_proxy_from_payload(row, proxy_type, row_country)
         if proxy and proxy.ip and proxy.port:
             proxies.append(proxy)
 
