@@ -23,6 +23,7 @@
             <button class="module-tab is-active" data-tab="overview">总览</button>
             <button class="module-tab" data-tab="inbound">入站</button>
             <button class="module-tab" data-tab="pool">代理池</button>
+            <button class="module-tab" data-tab="subscriptions">订阅</button>
             <button class="module-tab" data-tab="favorites">收藏</button>
         </div>
 
@@ -205,10 +206,6 @@
                             <option value="https">HTTPS</option>
                             <option value="socks4">SOCKS4</option>
                             <option value="socks5">SOCKS5</option>
-                            <option value="vmess">VMess</option>
-                            <option value="vless">VLESS</option>
-                            <option value="trojan">Trojan</option>
-                            <option value="hysteria2">Hysteria2</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -273,54 +270,6 @@
                         <input type="number" id="rotate-interval" min="30" max="7200">
                     </div>
                 </div>
-                <div class="panel panel-subscription" id="subscription-panel">
-                    <div class="panel-head">
-                        <h3>自定义订阅地址</h3>
-                        <span class="section-note">支持 http/https，支持订阅名称、来源、更新间隔和链接</span>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>订阅名称</label>
-                            <input type="text" id="subscription-name" placeholder="主订阅">
-                        </div>
-                        <div class="form-group">
-                            <label>订阅来源</label>
-                            <select id="subscription-source">
-                                <option value="remote">远程</option>
-                                <option value="local">本地</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>更新间隔 (秒)</label>
-                            <input type="number" id="subscription-interval" min="10" max="86400" value="60">
-                        </div>
-                        <div class="form-group" style="grid-column: 1 / -1;">
-                            <label>订阅链接</label>
-                            <input type="text" id="subscription-url-input" placeholder="https://example.com/proxies.txt">
-                        </div>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-primary" id="btn-add-subscription" onclick="addSubscription()">添加订阅</button>
-                        <button class="btn btn-secondary" onclick="loadSubscriptions()">刷新订阅</button>
-                        <button class="btn btn-secondary" onclick="loadSubscriptionStats()">刷新订阅统计</button>
-                    </div>
-                    <div class="subscription-list" id="subscription-list"></div>
-                    <div class="table-wrap top-gap">
-                        <table class="proxy-table">
-                            <thead>
-                                <tr>
-                                    <th>订阅地址</th>
-                                    <th>节点总数</th>
-                                    <th>可用节点</th>
-                                </tr>
-                            </thead>
-                            <tbody id="subscription-stats-tbody">
-                                <tr><td colspan="3" class="empty-state"><p>暂无订阅统计</p></td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <div class="btn-group">
                     <button class="btn btn-primary" id="btn-connect-main" onclick="connectCurrentProxy()">连接</button>
                     <button class="btn btn-secondary" id="btn-disconnect-main" onclick="disconnectCurrentProxy()">断开</button>
@@ -365,6 +314,59 @@
                 <div class="btn-group top-gap">
                     <button class="btn btn-secondary" id="btn-page-prev" onclick="changeProxyPage(-1)">上一页</button>
                     <button class="btn btn-secondary" id="btn-page-next" onclick="changeProxyPage(1)">下一页</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="module-section" data-section="subscriptions">
+            <div class="card">
+                <h2><span>订阅管理</span><span class="section-note">独立维护订阅源与统计</span></h2>
+                <div class="panel panel-subscription" id="subscription-panel">
+                    <div class="panel-head">
+                        <h3>自定义订阅地址</h3>
+                        <span class="section-note">仅建议加入 http / https / socks4 / socks5 源</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>订阅名称</label>
+                            <input type="text" id="subscription-name" placeholder="主订阅">
+                        </div>
+                        <div class="form-group">
+                            <label>订阅来源</label>
+                            <select id="subscription-source">
+                                <option value="remote">远程</option>
+                                <option value="local">本地</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>更新间隔 (秒)</label>
+                            <input type="number" id="subscription-interval" min="10" max="86400" value="60">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label>订阅链接</label>
+                            <input type="text" id="subscription-url-input" placeholder="https://example.com/proxies.txt">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-add-subscription" onclick="addSubscription()">添加订阅</button>
+                        <button class="btn btn-secondary" onclick="loadSubscriptions()">刷新订阅</button>
+                        <button class="btn btn-secondary" onclick="loadSubscriptionStats()">刷新订阅统计</button>
+                    </div>
+                    <div class="subscription-list" id="subscription-list"></div>
+                    <div class="table-wrap top-gap">
+                        <table class="proxy-table">
+                            <thead>
+                                <tr>
+                                    <th>订阅地址</th>
+                                    <th>节点总数</th>
+                                    <th>可用节点</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subscription-stats-tbody">
+                                <tr><td colspan="3" class="empty-state"><p>暂无订阅统计</p></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>

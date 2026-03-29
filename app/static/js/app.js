@@ -443,11 +443,16 @@ function fillSourceFilter(sources) {
     if (!select) return;
     const current = select.value;
     const options = ['<option value="">全部订阅</option>'];
+    const values = [];
     for (const source of (sources || [])) {
-        options.push(`<option value="${source}">${source}</option>`);
+        const value = typeof source === 'string' ? source : source.value;
+        const label = typeof source === 'string' ? source : (source.label || source.value);
+        if (!value) continue;
+        values.push(value);
+        options.push(`<option value="${value}">${label}</option>`);
     }
     select.innerHTML = options.join('');
-    if ((sources || []).includes(current)) {
+    if (values.includes(current)) {
         select.value = current;
     } else {
         select.value = '';
