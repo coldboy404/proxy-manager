@@ -21,7 +21,7 @@
 ### 方式一：一键启动脚本（推荐）
 
 ```bash
-cd /root/.openclaw/workspace/proxy-manager
+cd /root/proxy-manager
 
 # 启动服务
 ./start.sh
@@ -33,7 +33,7 @@ cd /root/.openclaw/workspace/proxy-manager
 ### 方式二：Docker Compose
 
 ```bash
-cd /root/.openclaw/workspace/proxy-manager
+cd /root/proxy-manager
 
 # 构建并启动
 docker compose up -d --build
