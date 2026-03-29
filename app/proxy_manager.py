@@ -20,6 +20,8 @@ import aiohttp
 import requests
 from flask import Flask, jsonify, render_template, request
 
+SUPPORTED_PROTOCOLS = {"http", "https", "socks4", "socks5"}
+
 
 
 
