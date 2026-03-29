@@ -2072,7 +2072,7 @@ def api_subscriptions_stats():
     return jsonify({"success": True, "stats": summary})
 
 
-@app.route("/api/subscriptions", methods=["GET", "POST", "DELETE"])
+@app.route("/api/subscriptions", methods=["GET", "POST", "PUT", "DELETE"])
 def api_subscriptions():
     subs = load_subscriptions()
 
@@ -2095,6 +2095,32 @@ def api_subscriptions():
         subs.append({"name": name, "source": source, "interval": interval, "url": raw_url})
         new_config = save_subscriptions(subs)
         return jsonify({"success": True, "message": "订阅已添加", "subscriptions": new_config.get("subscriptions", [])})
+
+    if request.method == "PUT":
+        payload = request.json or {}
+        original_url = str(payload.get("original_url", "")).strip()
+        if not original_url:
+            return jsonify({"success": False, "message": "缺少原始订阅链接"}), 400
+        new_name = str(payload.get("name", "")).strip()
+        new_source = str(payload.get("source", "remote")).strip() or "remote"
+        new_interval = int(payload.get("interval", 60))
+        new_url = str(payload.get("url", "")).strip()
+        parsed = urlsplit(new_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return jsonify({"success": False, "message": "订阅链接格式无效"}), 400
+        found = False
+        for item in subs:
+            if item.get("url") == original_url:
+                item["name"] = new_name or new_url
+                item["source"] = new_source
+                item["interval"] = new_interval
+                item["url"] = new_url
+                found = True
+                break
+        if not found:
+            return jsonify({"success": False, "message": "找不到该订阅"}), 404
+        new_config = save_subscriptions(subs)
+        return jsonify({"success": True, "message": "订阅已更新", "subscriptions": new_config.get("subscriptions", [])})
 
     target = str(request.args.get("url", "")).strip()
     if not target:

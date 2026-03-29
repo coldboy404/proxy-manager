@@ -788,16 +788,21 @@ function renderSubscriptionList(subs) {
         box.innerHTML = '<div class="subscription-empty">还没有自定义订阅地址</div>';
         return;
     }
-    box.innerHTML = subs.map(sub => `
+    box.innerHTML = subs.map(sub => {
+        const name = sub.name || sub.url.split('/').pop() || sub.url;
+        const host = (() => { try { return new URL(sub.url).hostname; } catch(e) { return sub.url; } })();
+        return `
         <div class="subscription-item">
             <div>
-                <div><strong>${sub.name || sub.url}</strong></div>
-                <code title="${sub.url}">${sub.url}</code>
-                <div class="small">来源：${sub.source || '-'} · 间隔：${sub.interval || 60}s</div>
+                <div><strong>${name}</strong></div>
+                <div class="small">来源：${host} · 间隔：${sub.interval || 60}s</div>
             </div>
-            <button class="table-action secondary" onclick='removeSubscription(${JSON.stringify(sub.url)})'>删除</button>
-        </div>
-    `).join('');
+            <div class="subscription-actions">
+                <button class="table-action" onclick='editSubscription(${JSON.stringify(sub.name)},${JSON.stringify(sub.source)},${JSON.stringify(sub.interval)},${JSON.stringify(sub.url)})'>编辑</button>
+                <button class="table-action secondary" onclick='removeSubscription(${JSON.stringify(sub.url)})'>删除</button>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 async function loadSubscriptions() {
@@ -811,29 +816,10 @@ async function loadSubscriptions() {
 }
 
 function renderSubscriptionStats(stats) {
-    const body = document.getElementById('subscription-stats-tbody');
-    if (!body) return;
     const items = (stats && stats.sources) ? stats.sources : [];
-
     document.getElementById('stat-sub-total').textContent = (stats && Number.isFinite(stats.total)) ? stats.total : 0;
     document.getElementById('stat-sub-working').textContent = (stats && Number.isFinite(stats.available)) ? stats.available : 0;
-
-    if (!items.length) {
-        body.innerHTML = '<tr><td colspan="3" class="empty-state"><p>暂无订阅统计</p></td></tr>';
-        return;
-    }
-
-    body.innerHTML = items.map(item => `
-        <tr>
-            <td>
-                <div><strong>${item.name || item.url}</strong></div>
-                <code title="${item.url}">${item.url}</code>
-                <div class="small">${item.source || '-'} · ${item.interval || 60}s</div>
-            </td>
-            <td>${item.total ?? 0}</td>
-            <td>${item.available ?? 0}</td>
-        </tr>
-    `).join('');
+    renderSubscriptionList(uiState.subscriptionUrls || []);
 }
 
 async function loadSubscriptionStats() {
@@ -844,6 +830,66 @@ async function loadSubscriptionStats() {
         console.error('加载订阅统计失败:', error);
         renderSubscriptionStats({ total: 0, available: 0, sources: [] });
     }
+}
+
+function setSubscriptionFormMode(mode) {
+    const btn = document.getElementById('btn-add-subscription');
+    if (mode === 'edit') {
+        btn.textContent = '保存修改';
+        btn.onclick = saveEditedSubscription;
+    } else {
+        btn.textContent = '添加订阅';
+        btn.onclick = addSubscription;
+    }
+}
+
+let editingSubscriptionUrl = '';
+
+function editSubscription(name, source, interval, url) {
+    document.getElementById('subscription-name').value = name || '';
+    document.getElementById('subscription-source').value = source || 'remote';
+    document.getElementById('subscription-interval').value = interval || 60;
+    document.getElementById('subscription-url-input').value = url || '';
+    editingSubscriptionUrl = url;
+    setSubscriptionFormMode('edit');
+    showStatus('正在编辑订阅', 'info');
+}
+
+async function saveEditedSubscription() {
+    const url = (document.getElementById('subscription-url-input').value || '').trim();
+    const name = (document.getElementById('subscription-name').value || '').trim();
+    const source = document.getElementById('subscription-source').value;
+    const interval = parseInt(document.getElementById('subscription-interval').value, 10);
+    if (!url) {
+        showStatus('请输入订阅链接', 'warning');
+        return;
+    }
+    setButtonLoading('btn-add-subscription', true, '保存修改', '保存中...');
+    try {
+        const data = await api('/api/subscriptions', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ original_url: editingSubscriptionUrl, url, name, source, interval })
+        });
+        showStatus(data.message || '订阅已更新', 'info');
+        editingSubscriptionUrl = '';
+        clearSubscriptionForm();
+        await loadSubscriptions();
+        await loadSubscriptionStats();
+    } catch (error) {
+        showStatus(`修改失败：${error.message}`, 'warning');
+    } finally {
+        setButtonLoading('btn-add-subscription', false, '保存修改', '保存中...');
+    }
+}
+
+function clearSubscriptionForm() {
+    document.getElementById('subscription-name').value = '';
+    document.getElementById('subscription-source').value = 'remote';
+    document.getElementById('subscription-interval').value = '60';
+    document.getElementById('subscription-url-input').value = '';
+    editingSubscriptionUrl = '';
+    setSubscriptionFormMode('add');
 }
 
 async function addSubscription() {
@@ -865,7 +911,7 @@ async function addSubscription() {
             body: JSON.stringify({ url, name, source, interval })
         });
         showStatus(data.message || '订阅已添加', 'info');
-        input.value = '';
+        clearSubscriptionForm();
         await loadSubscriptions();
         await loadSubscriptionStats();
         await loadProxies();
@@ -880,6 +926,7 @@ async function removeSubscription(url) {
     try {
         const data = await api(`/api/subscriptions?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
         showStatus(data.message || '订阅已删除', 'info');
+        clearSubscriptionForm();
         await loadSubscriptions();
         await loadSubscriptionStats();
     } catch (error) {
