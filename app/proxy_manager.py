@@ -741,12 +741,18 @@ def build_proxy_from_payload(
         protocol = str(
             payload.get("protocol") or payload.get("Protocol") or default_protocol
         ).lower()
-        if protocol not in SUPPORTED_PROTOCOLS:
+        # proxifly 等内置源返回的节点大部分没带 protocol，fallback 到 "all"
+        # 如果不处理 "all"，整个内置代理源就会被杀死
+        if protocol in SUPPORTED_PROTOCOLS:
+            effective_protocol = protocol
+        elif protocol == "all" or not protocol:
+            effective_protocol = "http"
+        else:
             return None
         return Proxy(
             ip=str(payload.get("ip") or payload.get("Ip") or ""),
             port=str(payload.get("port") or payload.get("Port") or ""),
-            protocol=protocol,
+            protocol=effective_protocol,
             country=str(country or "").upper(),
             anonymity=str(payload.get("anonymity") or payload.get("Anonymity") or ""),
             source=str(payload.get("source") or payload.get("Source") or ""),
@@ -756,12 +762,16 @@ def build_proxy_from_payload(
     if len(parts) < 2:
         return None
     protocol = str(default_protocol).lower()
-    if protocol not in SUPPORTED_PROTOCOLS:
+    if protocol in SUPPORTED_PROTOCOLS:
+        effective_protocol = protocol
+    elif protocol == "all" or not protocol:
+        effective_protocol = "http"
+    else:
         return None
     return Proxy(
         ip=parts[0],
         port=parts[1],
-        protocol=protocol,
+        protocol=effective_protocol,
         country=country_hint.upper() if country_hint else "",
         source="",
     )
