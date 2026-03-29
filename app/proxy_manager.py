@@ -20,8 +20,7 @@ import aiohttp
 import requests
 from flask import Flask, jsonify, render_template, request
 
-from .proxy_query import filter_sort_paginate_proxies
-from .runtime import ManagedAsyncServer
+
 
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
@@ -421,6 +420,157 @@ class AppState:
 
 
 state = AppState()
+def filter_sort_paginate_proxies(
+    proxies: List[Dict],
+    protocol: str = "",
+    country: str = "",
+    source: str = "",
+    status: str = "",
+    sort_by: str = "speed_ms",
+    sort_order: str = "asc",
+    page: int = 1,
+    page_size: int = 50,
+) -> Tuple[List[Dict], int, List[str]]:
+    items = list(proxies)
+    protocol = (protocol or "").lower()
+    country = (country or "").upper()
+    source = (source or "").strip()
+    status = (status or "").lower()
+    sort_by = sort_by or "speed_ms"
+    sort_order = (sort_order or "asc").lower()
+
+    if protocol and protocol != "all":
+        items = [item for item in items if str(item.get("protocol", "")).lower() == protocol]
+    if country:
+        items = [item for item in items if str(item.get("country", "")).upper() == country]
+    if source:
+        items = [item for item in items if str(item.get("source", "")) == source]
+    if status == "working":
+        items = [item for item in items if item.get("is_working")]
+    elif status == "failed":
+        items = [item for item in items if not item.get("is_working")]
+
+    sources = sorted({str(item.get("source", "")).strip() for item in proxies if str(item.get("source", "")).strip()})
+
+    def sort_key(item: Dict):
+        value = item.get(sort_by)
+        if sort_by in {"speed_ms", "latency", "last_tested", "country", "protocol"}:
+            return (value is None, value if value is not None else float("inf"))
+        return str(value or "")
+
+    reverse = sort_order == "desc"
+    items = sorted(items, key=sort_key, reverse=reverse)
+
+    total = len(items)
+    page = max(1, int(page or 1))
+    page_size = max(1, min(200, int(page_size or 50)))
+    start = (page - 1) * page_size
+    end = start + page_size
+    return items[start:end], total, sources
+
+
+class ManagedAsyncServer:
+    def __init__(self, name: str, factory) -> None:
+        self.name = name
+        self.factory = factory
+        self.logger = logging.getLogger(f"runtime.{name}")
+        self._lock = threading.Lock()
+        self._thread = None
+        self._loop = None
+        self._server = None
+        self._running = False
+        self._last_error = ""
+        self._last_started_at = None
+        self._last_stopped_at = None
+
+    def attach(self, loop, server) -> None:
+        with self._lock:
+            self._loop = loop
+            self._server = server
+            self._running = True
+            self._last_error = ""
+
+    def set_running(self, running: bool, error: str = "") -> None:
+        with self._lock:
+            self._running = running
+            if error:
+                self._last_error = error
+
+    def status(self) -> Dict:
+        with self._lock:
+            return {
+                "name": self.name,
+                "running": self._running,
+                "last_error": self._last_error,
+                "last_started_at": self._last_started_at,
+                "last_stopped_at": self._last_stopped_at,
+                "thread_alive": self._thread.is_alive() if self._thread else False,
+            }
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self._thread = threading.Thread(target=self._run, daemon=True, name=f"{self.name}-server")
+            self._last_started_at = time.time()
+            self._thread.start()
+
+    def _run(self) -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        with self._lock:
+            self._loop = loop
+        try:
+            server_obj = self.factory(self)
+            loop.run_until_complete(server_obj.start(self))
+        except Exception as exc:
+            self.logger.error("%s server error: %s", self.name, exc)
+            self.set_running(False, str(exc))
+        finally:
+            with self._lock:
+                self._running = False
+                self._server = None
+                self._loop = None
+                self._last_stopped_at = time.time()
+            try:
+                loop.stop()
+            except Exception:
+                pass
+            loop.close()
+
+    def stop(self, timeout: float = 5.0) -> bool:
+        with self._lock:
+            loop = self._loop
+            server = self._server
+            thread = self._thread
+        if not loop or not server or not thread:
+            return True
+
+        done = threading.Event()
+
+        def _shutdown() -> None:
+            async def _close() -> None:
+                server.close()
+                await server.wait_closed()
+                done.set()
+            asyncio.create_task(_close())
+
+        loop.call_soon_threadsafe(_shutdown)
+        done.wait(timeout)
+        thread.join(timeout)
+        with self._lock:
+            self._running = False
+            self._server = None
+            self._loop = None
+            self._last_stopped_at = time.time()
+        return not thread.is_alive()
+
+    def restart(self) -> Dict:
+        stopped = self.stop()
+        self.start()
+        return {"stopped": stopped, **self.status()}
+
+
 socks5_runtime = None
 http_runtime = None
 
