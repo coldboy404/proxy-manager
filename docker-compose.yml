@@ -7,51 +7,52 @@ services:
     restart: unless-stopped
     ports:
       # Web 管理面板
-      - "5000:5000"
+      - "${WEB_PORT:-5000}:5000"
       # SOCKS5 入站代理
-      - "5001:5001"
+      - "${SOCKS5_PORT:-5001}:5001"
       # HTTP/HTTPS 入站代理
-      - "5002:5002"
+      - "${HTTP_PROXY_PORT:-5002}:5002"
     environment:
       # 测速模式：tcp=本机到代理连接延迟, http=代理出网延迟
-      - TEST_MODE=tcp
+      - TEST_MODE=${TEST_MODE:-tcp}
       # 自动拉取与测速
-      - AUTO_FETCH=true
-      - AUTO_TEST=true
-      - AUTO_FETCH_TYPE=all
-      - AUTO_FETCH_COUNTRIES=US,JP,SG
-      - AUTO_FETCH_LIMIT=50
-      - AUTO_TEST_PROTOCOL=
-      - AUTO_TEST_COUNT=50
-      - FETCH_LIMIT_PER_COUNTRY=50
+      - AUTO_FETCH=${AUTO_FETCH:-true}
+      - AUTO_TEST=${AUTO_TEST:-true}
+      - AUTO_FETCH_TYPE=${AUTO_FETCH_TYPE:-all}
+      - AUTO_FETCH_COUNTRIES=${AUTO_FETCH_COUNTRIES:-US,JP,SG}
+      - AUTO_FETCH_LIMIT=${AUTO_FETCH_LIMIT:-100}
+      - AUTO_TEST_PROTOCOL=${AUTO_TEST_PROTOCOL:-}
+      - AUTO_TEST_COUNT=${AUTO_TEST_COUNT:-150}
+      - FETCH_LIMIT_PER_COUNTRY=${FETCH_LIMIT_PER_COUNTRY:-100}
       # 代理列表更新间隔（秒）
-      - POLL_INTERVAL=300
+      - POLL_INTERVAL=${POLL_INTERVAL:-300}
       # 自动测速间隔（秒）
-      - TEST_INTERVAL=60
+      - TEST_INTERVAL=${TEST_INTERVAL:-120}
       # 每次测试的代理数量
-      - TEST_COUNT=50
+      - TEST_COUNT=${TEST_COUNT:-150}
       # 测速超时（秒）
-      - TIMEOUT=10
-      - TEST_URL=https://www.google.com
+      - TIMEOUT=${TIMEOUT:-10}
+      - TEST_URL=${TEST_URL:-https://www.google.com}
       # 日志级别
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_CONNECTION_ERRORS=${LOG_CONNECTION_ERRORS:-false}
       # 数据目录
-      - DATA_DIR=/app/data
+      - DATA_DIR=${DATA_DIR:-/app/data}
       # SOCKS5 服务器配置（入站端口 5001）
-      - SOCKS5_ENABLED=true
-      - SOCKS5_HOST=0.0.0.0
-      - SOCKS5_PORT=5001
-      - SOCKS5_AUTH=false
-      - SOCKS5_USER=proxyuser
-      - SOCKS5_PASS=proxypass
+      - SOCKS5_ENABLED=${SOCKS5_ENABLED:-true}
+      - SOCKS5_HOST=${SOCKS5_HOST:-0.0.0.0}
+      - SOCKS5_PORT=${SOCKS5_PORT:-5001}
+      - SOCKS5_AUTH=${SOCKS5_AUTH:-false}
+      - SOCKS5_USER=${SOCKS5_USER:-proxyuser}
+      - SOCKS5_PASS=${SOCKS5_PASS:-proxypass}
       - SOCKS5_ROTATE=request
       # HTTP/HTTPS 代理服务器配置（入站端口 5002）
-      - HTTP_PROXY_ENABLED=true
-      - HTTP_PROXY_HOST=0.0.0.0
-      - HTTP_PROXY_PORT=5002
-      - HTTP_PROXY_AUTH=false
-      - HTTP_PROXY_USER=proxyuser
-      - HTTP_PROXY_PASS=proxypass
+      - HTTP_PROXY_ENABLED=${HTTP_PROXY_ENABLED:-true}
+      - HTTP_PROXY_HOST=${HTTP_PROXY_HOST:-0.0.0.0}
+      - HTTP_PROXY_PORT=${HTTP_PROXY_PORT:-5002}
+      - HTTP_PROXY_AUTH=${HTTP_PROXY_AUTH:-false}
+      - HTTP_PROXY_USER=${HTTP_PROXY_USER:-proxyuser}
+      - HTTP_PROXY_PASS=${HTTP_PROXY_PASS:-proxypass}
     volumes:
       # 持久化代理数据和配置
       - ./data:/app/data

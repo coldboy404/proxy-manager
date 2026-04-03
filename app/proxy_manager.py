@@ -35,6 +35,7 @@ TIMEOUT = int(os.getenv("TIMEOUT", "10"))
 TEST_MODE = os.getenv("TEST_MODE", "tcp").lower()
 TEST_URL = os.getenv("TEST_URL", "https://www.google.com")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_CONNECTION_ERRORS = os.getenv("LOG_CONNECTION_ERRORS", "false").lower() == "true"
 
 AUTO_FETCH = os.getenv("AUTO_FETCH", "false").lower() == "true"
 AUTO_TEST = os.getenv("AUTO_TEST", "false").lower() == "true"
@@ -1409,7 +1410,10 @@ class SOCKS5Server:
                 with state.lock:
                     state.stats["socks5_connections"] += 1
         except Exception as exc:
-            self.logger.error("处理连接错误：%s", exc)
+            if LOG_CONNECTION_ERRORS:
+                self.logger.error("处理连接错误：%s", exc)
+            else:
+                self.logger.debug("处理连接错误：%s", exc)
         finally:
             try:
                 writer.close()
@@ -1704,7 +1708,10 @@ class HTTPProxyServer:
                 writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
                 await writer.drain()
         except Exception as exc:
-            self.logger.error("HTTP 代理错误：%s", exc)
+            if LOG_CONNECTION_ERRORS:
+                self.logger.error("HTTP 代理错误：%s", exc)
+            else:
+                self.logger.debug("HTTP 代理错误：%s", exc)
         finally:
             try:
                 writer.close()
