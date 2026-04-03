@@ -791,14 +791,15 @@ function renderSubscriptionList(subs) {
     box.innerHTML = subs.map(sub => {
         const name = sub.name || sub.url.split('/').pop() || sub.url;
         const host = (() => { try { return new URL(sub.url).hostname; } catch(e) { return sub.url; } })();
+        const tag = (sub.tag || '').trim();
         return `
         <div class="subscription-item">
             <div>
-                <div><strong>${name}</strong></div>
+                <div><strong>${name}</strong>${tag ? ` <span class="subscription-tag">${tag}</span>` : ''}</div>
                 <div class="small">来源：${host} · 间隔：${sub.interval || 60}s</div>
             </div>
             <div class="subscription-actions">
-                <button class="table-action" onclick='editSubscription(${JSON.stringify(sub.name)},${JSON.stringify(sub.source)},${JSON.stringify(sub.interval)},${JSON.stringify(sub.url)})'>编辑</button>
+                <button class="table-action" onclick='editSubscription(${JSON.stringify(sub.name)},${JSON.stringify(sub.source)},${JSON.stringify(sub.interval)},${JSON.stringify(sub.url)},${JSON.stringify(sub.tag || '')})'>编辑</button>
                 <button class="table-action secondary" onclick='removeSubscription(${JSON.stringify(sub.url)})'>删除</button>
             </div>
         </div>`;
@@ -845,11 +846,12 @@ function setSubscriptionFormMode(mode) {
 
 let editingSubscriptionUrl = '';
 
-function editSubscription(name, source, interval, url) {
+function editSubscription(name, source, interval, url, tag) {
     document.getElementById('subscription-name').value = name || '';
     document.getElementById('subscription-source').value = source || 'remote';
     document.getElementById('subscription-interval').value = interval || 60;
     document.getElementById('subscription-url-input').value = url || '';
+    document.getElementById('subscription-tag').value = tag || '';
     editingSubscriptionUrl = url;
     setSubscriptionFormMode('edit');
     showStatus('正在编辑订阅', 'info');
@@ -860,6 +862,7 @@ async function saveEditedSubscription() {
     const name = (document.getElementById('subscription-name').value || '').trim();
     const source = document.getElementById('subscription-source').value;
     const interval = parseInt(document.getElementById('subscription-interval').value, 10);
+    const tag = (document.getElementById('subscription-tag').value || '').trim();
     if (!url) {
         showStatus('请输入订阅链接', 'warning');
         return;
@@ -869,7 +872,7 @@ async function saveEditedSubscription() {
         const data = await api('/api/subscriptions', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ original_url: editingSubscriptionUrl, url, name, source, interval })
+            body: JSON.stringify({ original_url: editingSubscriptionUrl, url, name, source, interval, tag })
         });
         showStatus(data.message || '订阅已更新', 'info');
         editingSubscriptionUrl = '';
@@ -888,6 +891,7 @@ function clearSubscriptionForm() {
     document.getElementById('subscription-source').value = 'remote';
     document.getElementById('subscription-interval').value = '60';
     document.getElementById('subscription-url-input').value = '';
+    document.getElementById('subscription-tag').value = '';
     editingSubscriptionUrl = '';
     setSubscriptionFormMode('add');
 }
@@ -898,6 +902,7 @@ async function addSubscription() {
     const name = (document.getElementById('subscription-name').value || '').trim();
     const source = document.getElementById('subscription-source').value;
     const interval = parseInt(document.getElementById('subscription-interval').value, 10);
+    const tag = (document.getElementById('subscription-tag').value || '').trim();
     if (!url) {
         showStatus('请输入订阅链接', 'warning');
         return;
@@ -908,7 +913,7 @@ async function addSubscription() {
         const data = await api('/api/subscriptions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, name, source, interval })
+            body: JSON.stringify({ url, name, source, interval, tag })
         });
         showStatus(data.message || '订阅已添加', 'info');
         clearSubscriptionForm();

@@ -811,6 +811,7 @@ def load_subscriptions_from_config(config: Dict) -> List[Dict]:
                         "source": str(item.get("source", "remote")).strip() or "remote",
                         "interval": max(10, int(item.get("interval", 60))),
                         "url": str(item.get("url", "")).strip(),
+                        "tag": str(item.get("tag", "")).strip(),
                     }
                 )
             elif isinstance(item, str):
@@ -822,6 +823,7 @@ def load_subscriptions_from_config(config: Dict) -> List[Dict]:
                             "source": "remote",
                             "interval": 60,
                             "url": value,
+                            "tag": "",
                         }
                     )
     return normalized
@@ -880,6 +882,7 @@ def save_subscriptions(items: List[Dict]) -> Dict:
                 "source": str(item.get("source", "remote")).strip() or "remote",
                 "interval": max(10, int(item.get("interval", 60))),
                 "url": str(item.get("url", "")).strip(),
+                "tag": str(item.get("tag", "")).strip(),
             }
         )
     config = save_runtime_config({"subscriptions": normalized})
@@ -2277,6 +2280,7 @@ def api_subscriptions():
         source = str(payload.get("source", "remote")).strip() or "remote"
         interval = int(payload.get("interval", 60))
         raw_url = str(payload.get("url", "")).strip()
+        tag = str(payload.get("tag", "")).strip()
         parsed = urlsplit(raw_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return jsonify({"success": False, "message": "订阅链接格式无效"}), 400
@@ -2284,7 +2288,7 @@ def api_subscriptions():
             name = raw_url
         if any(item.get("url") == raw_url for item in subs):
             return jsonify({"success": True, "message": "订阅已存在", "subscriptions": subs})
-        subs.append({"name": name, "source": source, "interval": interval, "url": raw_url})
+        subs.append({"name": name, "source": source, "interval": interval, "url": raw_url, "tag": tag})
         new_config = save_subscriptions(subs)
         return jsonify({"success": True, "message": "订阅已添加", "subscriptions": new_config.get("subscriptions", [])})
 
@@ -2297,6 +2301,7 @@ def api_subscriptions():
         new_source = str(payload.get("source", "remote")).strip() or "remote"
         new_interval = int(payload.get("interval", 60))
         new_url = str(payload.get("url", "")).strip()
+        new_tag = str(payload.get("tag", "")).strip()
         parsed = urlsplit(new_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return jsonify({"success": False, "message": "订阅链接格式无效"}), 400
@@ -2307,6 +2312,7 @@ def api_subscriptions():
                 item["source"] = new_source
                 item["interval"] = new_interval
                 item["url"] = new_url
+                item["tag"] = new_tag
                 found = True
                 break
         if not found:
